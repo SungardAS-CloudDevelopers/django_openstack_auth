@@ -21,6 +21,7 @@ from django.utils.translation import ugettext_lazy as _
 from django.views.decorators.debug import sensitive_variables  # noqa
 
 from openstack_auth import exceptions
+from openstack_auth import utils
 
 
 LOG = logging.getLogger(__name__)
@@ -71,6 +72,22 @@ class Login(django_auth_forms.AuthenticationForm):
         elif len(self.fields['region'].choices) > 1:
             self.fields['region'].initial = self.request.COOKIES.get(
                 'login_region')
+
+        # if websso is enabled and keystone version supported
+        # prepend the websso_choices select input to the form
+        if utils.is_websso_enabled():
+            initial = getattr(settings, 'WEBSSO_INITIAL_CHOICE', 'credentials')
+            choicefield = forms.ChoiceField(
+                label=_("Authenticate using"),
+                choices=getattr(settings, 'WEBSSO_CHOICES', ()),
+                initial=initial)
+            self.fields.insert(0, 'auth_type', choicefield)
+
+        # websso is enabled, but keystone version is not supported
+        elif getattr(settings, 'WEBSSO_ENABLED', False):
+            msg = """Websso is enabled but your keystone does not support it.
+                     Please use keystone version 3 or above."""
+            LOG.warning(msg)
 
     @staticmethod
     def get_region_choices():

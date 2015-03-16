@@ -53,7 +53,8 @@ def create_user_from_token(request, token, endpoint, services_region=None):
                 service_catalog=token.serviceCatalog,
                 roles=token.roles,
                 endpoint=endpoint,
-                services_region=svc_region)
+                services_region=svc_region,
+                federated_login=utils.is_federated_login(request))
 
 
 class Token(object):
@@ -165,13 +166,17 @@ class User(models.AnonymousUser):
 
         The id of the Keystone domain scoped for the current user/token.
 
+    .. attribute:: federated_login
+
+        Whether user authenticated using federation or credentials. (Boolean)
+
     """
     def __init__(self, id=None, token=None, user=None, tenant_id=None,
                  service_catalog=None, tenant_name=None, roles=None,
                  authorized_tenants=None, endpoint=None, enabled=False,
                  services_region=None, user_domain_id=None,
                  user_domain_name=None, domain_id=None, domain_name=None,
-                 project_id=None, project_name=None):
+                 project_id=None, project_name=None, federated_login=False):
         self.id = id
         self.pk = id
         self.token = token
@@ -191,6 +196,7 @@ class User(models.AnonymousUser):
         self.endpoint = endpoint
         self.enabled = enabled
         self._authorized_tenants = authorized_tenants
+        self.federated_login = federated_login
 
         # List of variables to be deprecated.
         self.tenant_id = self.project_id
@@ -280,7 +286,8 @@ class User(models.AnonymousUser):
                 self._authorized_tenants = utils.get_project_list(
                     user_id=self.id,
                     auth_url=endpoint,
-                    token=token.id)
+                    token=token.id,
+                    federated_login=self.federated_login)
             except (keystone_exceptions.ClientException,
                     keystone_exceptions.AuthorizationFailure):
                 LOG.exception('Unable to retrieve project list.')

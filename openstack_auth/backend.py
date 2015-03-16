@@ -78,10 +78,17 @@ class KeystoneBackend(object):
         keystone_client_class = utils.get_keystone_client().Client
 
         auth_url = utils.fix_auth_url_version(auth_url)
-        unscoped_auth = utils.get_password_auth_plugin(auth_url,
-                                                       username,
-                                                       password,
-                                                       user_domain_name)
+
+        if 'token' in request.POST:
+            unscoped_auth = utils.get_token_auth_plugin(
+                auth_url,
+                request.POST.get('token'))
+        else:
+            unscoped_auth = utils.get_password_auth_plugin(
+                auth_url,
+                username,
+                password,
+                user_domain_name)
 
         try:
             unscoped_auth_ref = unscoped_auth.get_access(session)
@@ -107,8 +114,11 @@ class KeystoneBackend(object):
         # We list all the user's projects
         try:
             if utils.get_keystone_version() >= 3:
-                projects = unscoped_client.projects.list(
-                    user=unscoped_auth_ref.user_id)
+                if utils.is_federated_login(request):
+                    projects = unscoped_client.federation.projects.list()
+                else:
+                    projects = unscoped_client.projects.list(
+                        user=unscoped_auth_ref.user_id)
             else:
                 projects = unscoped_client.tenants.list()
         except (keystone_exceptions.ClientException,

@@ -11,6 +11,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 import logging
+import re
 import time
 
 import django
@@ -18,10 +19,12 @@ from django.conf import settings
 from django.contrib import auth
 from django.contrib.auth.decorators import login_required  # noqa
 from django.contrib.auth import views as django_auth_views
+from django import http as django_http
 from django import shortcuts
 from django.utils import functional
 from django.utils import http
 from django.views.decorators.cache import never_cache  # noqa
+from django.views.decorators.csrf import csrf_exempt  # noqa
 from django.views.decorators.csrf import csrf_protect  # noqa
 from django.views.decorators.debug import sensitive_post_parameters  # noqa
 from keystoneclient.auth import token_endpoint
@@ -49,6 +52,18 @@ LOG = logging.getLogger(__name__)
 @never_cache
 def login(request, template_name=None, extra_context=None, **kwargs):
     """Logs a user in using the :class:`~openstack_auth.forms.Login` form."""
+
+    # If the user enabled websso and selects default protocol
+    # from the dropdown, We need to redirect user to the websso url
+    if request.method == 'POST':
+        protocol = request.POST.get('auth_type', 'credentials')
+        if utils.is_websso_enabled() and protocol != 'credentials':
+            region = request.POST.get('region')
+            origin = request.build_absolute_uri('/auth/websso/')
+            url = '%s/auth/OS-FEDERATION/websso/%s?origin=%s' % \
+                (region, protocol, origin)
+            return shortcuts.redirect(url)
+
     if not request.is_ajax():
         # If the user is already authenticated, redirect them to the
         # dashboard straight away, unless the 'next' parameter is set as it
@@ -110,6 +125,22 @@ def login(request, template_name=None, extra_context=None, **kwargs):
         request.session['region_name'] = region_name
         request.session['last_activity'] = int(time.time())
     return res
+
+
+@sensitive_post_parameters()
+@csrf_exempt
+@never_cache
+def websso(request):
+    """Logs a user in using a token from Keystone's POST."""
+    referer = request.META.get('HTTP_REFERER')
+    auth_url = re.sub(r'/auth.*', '', referer)
+    request.federated_login = True
+    request.user = auth.authenticate(request=request, auth_url=auth_url)
+    auth_user.set_session_from_user(request, request.user)
+    auth.login(request, request.user)
+    if request.session.test_cookie_worked():
+        request.session.delete_test_cookie()
+    return django_http.HttpResponseRedirect(settings.LOGIN_REDIRECT_URL)
 
 
 def logout(request, login_url=None, **kwargs):
