@@ -134,7 +134,11 @@ def websso(request):
     """Logs a user in using a token from Keystone's POST."""
     referer = request.META.get('HTTP_REFERER')
     auth_url = re.sub(r'/auth.*', '', referer)
-    request.federated_login = True
+    # ##########################
+    # Jason did it (to fix the things)
+    # We're not really using federation, we're just hijacking their flow
+    # ##########################
+    request.federated_login = False
     request.user = auth.authenticate(request=request, auth_url=auth_url)
     auth_user.set_session_from_user(request, request.user)
     auth.login(request, request.user)
