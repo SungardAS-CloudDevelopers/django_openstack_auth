@@ -21,6 +21,7 @@ from django.conf import settings
 from django.contrib import auth
 from django.contrib.auth import middleware
 from django.contrib.auth import models
+from django.core.cache import cache as django_cache
 from django.utils import decorators
 from django.utils import timezone
 from keystoneclient.auth.identity import v2 as v2_auth
@@ -34,8 +35,6 @@ from six.moves.urllib import parse as urlparse
 
 
 LOG = logging.getLogger(__name__)
-
-_PROJECT_CACHE = {}
 
 _TOKEN_TIMEOUT_MARGIN = getattr(settings, 'TOKEN_TIMEOUT_MARGIN', 0)
 
@@ -141,16 +140,16 @@ def memoize_by_keyword_arg(cache, kw_keys):
             if not mem_args:
                 return func(*args, **kwargs)
             if mem_args in cache:
-                return cache[mem_args]
+                return cache.get(mem_args)
             result = func(*args, **kwargs)
-            cache[mem_args] = result
+            cache.set(mem_args, result)
             return result
         return wrapper
     return _decorator
 
 
 def remove_project_cache(token):
-    _PROJECT_CACHE.pop(token, None)
+    django_cache.delete(token)
 
 
 # Helper for figuring out keystone version
@@ -242,7 +241,7 @@ def get_token_auth_plugin(auth_url, token, project_id=None, domain_name=None):
                              reauthenticate=False)
 
 
-@memoize_by_keyword_arg(_PROJECT_CACHE, ('token', ))
+@memoize_by_keyword_arg(django_cache, ('token', ))
 def get_project_list(*args, **kwargs):
     is_federated = kwargs.get('is_federated', False)
     sess = kwargs.get('session') or get_session()
