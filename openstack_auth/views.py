@@ -148,7 +148,8 @@ def websso(request):
         if not user_enabled(request.user, token, auth_url):
             raise exceptions.KeystoneAuthException("Your account has been disabled. Please contact your administrator.")
     except exceptions.KeystoneAuthException as exc:
-        msg = 'Login failed: %s' % unicode(exc)
+        msg = 'No existing Sungard AS Cloud Account is authorized for this user -  \
+        Please contact your Account Executive or Administrator if you believe this to be in error'
         res = django_http.HttpResponseRedirect(settings.LOGIN_URL)
         res.set_cookie('logout_reason', msg, max_age=10)
         return res
