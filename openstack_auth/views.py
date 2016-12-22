@@ -27,7 +27,7 @@ from django.views.decorators.csrf import csrf_exempt  # noqa
 from django.views.decorators.csrf import csrf_protect  # noqa
 from django.views.decorators.debug import sensitive_post_parameters  # noqa
 from keystoneauth1 import exceptions as keystone_exceptions
-import six
+from keystoneclient.v3 import client
 
 from openstack_auth import exceptions
 from openstack_auth import forms
@@ -129,11 +129,25 @@ def websso(request):
     referer = request.META.get('HTTP_REFERER', settings.OPENSTACK_KEYSTONE_URL)
     auth_url = utils.clean_up_auth_url(referer)
     token = request.POST.get('token')
+    domain_name = request.POST.get('domain_name')
+    error_msg = request.POST.get('error_msg')
     try:
+        if error_msg:
+            raise exceptions.KeystoneAuthException(error_msg)
         request.user = auth.authenticate(request=request, auth_url=auth_url,
-                                         token=token)
+                                         token=token,
+                                         user_domain_name=domain_name)
+
+        if not user_enabled(request.user, token, auth_url):
+            raise exceptions.KeystoneAuthException(
+                "Your account has been disabled. "
+                "Please contact your administrator.")
     except exceptions.KeystoneAuthException as exc:
-        msg = 'Login failed: %s' % six.text_type(exc)
+        msg = ("No existing Sungard AS Cloud Account is "
+               "authorized for this user - Please contact "
+               "your Account Executive or Administrator if "
+               "you believe this to be in error"
+               )
         res = django_http.HttpResponseRedirect(settings.LOGIN_URL)
         res.set_cookie('logout_reason', msg, max_age=10)
         return res
@@ -143,6 +157,14 @@ def websso(request):
     if request.session.test_cookie_worked():
         request.session.delete_test_cookie()
     return django_http.HttpResponseRedirect(settings.LOGIN_REDIRECT_URL)
+
+
+def user_enabled(user, token, auth_url):
+    keystone = client.Client(
+        token=token,
+        auth_url=auth_url,
+        endpoint=user.endpoint)
+    return keystone.users.get(user).enabled
 
 
 def logout(request, login_url=None, **kwargs):
